@@ -1,11 +1,21 @@
 "study","scope","model","rows_scored","mean_absolute_error_s","mean_absolute_percent_error","fraction_inside_95ci","wins","rank"
-"non_signal","all applicable scenarios","M/G/1",12,0.0434737299509742,1.09915301437743,0.833333333333333,12,1
-"non_signal","all applicable scenarios","M/D/c",24,0.488270423102031,24.9191856703988,0.166666666666667,12,2
-"non_signal","all applicable scenarios","M/M/c",24,0.669582067876522,51.3161864669188,0.25,8,3
-"non_signal","all applicable scenarios","M/M/1",12,0.958541724775851,54.5176686108459,0.166666666666667,4,4
-"non_signal","only where the model's service assumption matches","M/G/1",12,0.0434737299509742,1.09915301437743,0.833333333333333,12,1
-"non_signal","only where the model's service assumption matches","M/M/c",8,0.0534380293295542,1.34779990305578,0.75,8,2
-"non_signal","only where the model's service assumption matches","M/M/1",4,0.102436631341075,2.10571714962573,0.5,4,3
-"non_signal","only where the model's service assumption matches","M/D/c",8,0.019060668261614,3.09165475401014,0.5,8,4
-"signal","all scenarios","Webster",5,3.62672832325466,4.77166126636596,0,5,1
-"signal","all scenarios","Harahap Eq.3.7",5,4.09569175312143,5.46444437676684,0,0,2
+"non_signal","all applicable scenarios","M/G/1",12,0.0102433812754151,0.371400396216006,1,12,1
+"non_signal","all applicable scenarios","M/G/c",24,0.0112482016592426,1.63454188550604,0.708333333333333,24,2
+"non_signal","all applicable scenarios","M/D/c",24,0.473648160762322,24.6803272980873,0.208333333333333,8,3
+"non_signal","all applicable scenarios","M/M/c",24,0.650565451805554,50.938569023255,0.333333333333333,8,4
+"non_signal","all applicable scenarios","M/M/1",12,0.919118737718109,53.4232374449429,0.333333333333333,4,5
+"non_signal","only where the model's service assumption matches","M/M/1",4,0.00969522212266516,0.200325403186035,1,4,1
+"non_signal","only where the model's service assumption matches","M/M/c",8,0.00912612235771051,0.328854059968719,1,8,2
+"non_signal","only where the model's service assumption matches","M/G/1",12,0.0102433812754151,0.371400396216006,1,12,3
+"non_signal","only where the model's service assumption matches","M/G/c",24,0.0112482016592426,1.63454188550604,0.708333333333333,24,4
+"non_signal","only where the model's service assumption matches","M/D/c",8,0.0103686824746486,2.63513389055346,0.625,8,5
+"non_signal","same scenarios: 1 lane (all models)","M/G/c",12,0.0102433812754151,0.371400396216005,1,12,1
+"non_signal","same scenarios: 1 lane (all models)","M/G/1",12,0.0102433812754151,0.371400396216006,1,12,2
+"non_signal","same scenarios: 1 lane (all models)","M/D/c",12,0.658404673181921,23.5190375213595,0.333333333333333,4,3
+"non_signal","same scenarios: 1 lane (all models)","M/M/1",12,0.919118737718109,53.4232374449429,0.333333333333333,4,4
+"non_signal","same scenarios: 1 lane (all models)","M/M/c",12,0.91911873771811,53.4232374449429,0.333333333333333,4,5
+"non_signal","same scenarios: 2 lanes (multi-server models)","M/G/c",12,0.0122530220430701,2.89768337479608,0.416666666666667,12,1
+"non_signal","same scenarios: 2 lanes (multi-server models)","M/D/c",12,0.288891648342724,25.8416170748151,0.0833333333333333,4,2
+"non_signal","same scenarios: 2 lanes (multi-server models)","M/M/c",12,0.382012165892999,48.4539006015671,0.333333333333333,4,3
+"signal","all scenarios","Webster",5,1.05859049032689,1.37341756250588,0.4,5,1
+"signal","all scenarios","Harahap Eq.3.7",5,4.04689213087886,5.40135241666229,0,0,2
