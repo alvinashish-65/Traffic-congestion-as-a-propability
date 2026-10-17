@@ -2,9 +2,9 @@
 # Traffic queue model comparison, two separate studies.
 #
 #  Study 1  NON-SIGNAL queue (toll booth style). Candidate models:
-#           M/M/1, M/M/c, M/D/c, M/G/1.
+#           M/M/1, M/M/c, M/D/c, M/G/1, M/G/c.
 #  Study 2  SIGNALISED approach (red/green). Candidate models:
-#           Webster (uniform + random delay) and Harahap et al. (2019) eq. 3.7.
+#           Webster (full 3-term formula) and Harahap et al. (2019) eq. 3.7.
 #
 # Design rule: every scenario is simulated ONCE. Every candidate model then
 # predicts that same scenario, and the predictions are compared with the
@@ -19,7 +19,7 @@ OUT_DIR <- "results"
 dir.create(OUT_DIR, showWarnings = FALSE, recursive = TRUE)
 
 # ---------------- run settings (raise for final results) ----------------
-N_REP        <- 100      # replications, non-signal study
+N_REP        <- 300      # replications, non-signal study
 HORIZON      <- 12000    # seconds per replication, non-signal study
 WARMUP       <- 1000     # seconds discarded, non-signal study
 N_REP_SIG    <- 40       # replications, signal study
@@ -52,6 +52,9 @@ mmc_wait <- function(lambda, mu, c) {                 # Erlang C
   (top / (s + top)) / (c * mu - lambda)
 }
 mdc_wait <- function(lambda, mu, c) 0.5 * mmc_wait(lambda, mu, c)   # exact for c = 1, Allen-Cunneen for c > 1
+# Allen-Cunneen M/G/c: Erlang C scaled by (Ca^2 + Cs^2) / 2 with Poisson arrivals (Ca^2 = 1).
+# Exact for c = 1 (equals Pollaczek-Khinchine); an approximation for c > 1.
+mgc_wait <- function(lambda, mu, c, cv2) mmc_wait(lambda, mu, c) * (1 + cv2) / 2
 mg1_wait <- function(lambda, mu, cv2) {                # Pollaczek-Khinchine
   rho <- lambda / mu
   if (rho >= 1) return(NA_real_)
@@ -86,7 +89,7 @@ service_types <- data.frame(service_type = c("exponential", "deterministic", "ga
 grid <- expand.grid(st = seq_len(nrow(service_types)), lanes = c(1, 2),
                     rho = c(0.3, 0.5, 0.7, 0.85), KEEP.OUT.ATTRS = FALSE)
 
-models_ns <- c("M/M/1", "M/M/c", "M/D/c", "M/G/1")
+models_ns <- c("M/M/1", "M/M/c", "M/D/c", "M/G/1", "M/G/c")
 ns_rows <- list(); k <- 1L
 for (i in seq_len(nrow(grid))) {
   st <- service_types[grid$st[i], ]; c <- grid$lanes[i]; rho <- grid$rho[i]
@@ -97,12 +100,13 @@ for (i in seq_len(nrow(grid))) {
   preds <- c("M/M/1" = if (c == 1) mm1_wait(lambda, MU) else NA_real_,
              "M/M/c" = mmc_wait(lambda, MU, c),
              "M/D/c" = mdc_wait(lambda, MU, c),
-             "M/G/1" = if (c == 1) mg1_wait(lambda, MU, st$cv2) else NA_real_)
+             "M/G/1" = if (c == 1) mg1_wait(lambda, MU, st$cv2) else NA_real_,
+             "M/G/c" = mgc_wait(lambda, MU, c, st$cv2))
   match_assump <- c("M/M/1" = st$service == "exp", "M/M/c" = st$service == "exp",
-                    "M/D/c" = st$service == "det", "M/G/1" = TRUE)
+                    "M/D/c" = st$service == "det", "M/G/1" = TRUE, "M/G/c" = TRUE)
   errs <- vapply(preds, function(p) abs(pct_err(p, ci[["mean"]])), 0)
   # every model within 1e-6 % of the smallest error counts as closest (ties are common:
-  # for 1 lane + exponential service, M/M/1, M/M/c and M/G/1 are the same formula)
+  # for 1 lane + exponential service, M/M/1, M/M/c, M/G/1 and M/G/c are the same formula)
   best <- if (all(is.na(errs))) character(0) else names(errs)[!is.na(errs) & errs - min(errs, na.rm = TRUE) < 1e-6]
   for (m in models_ns) {
     p <- preds[[m]]
@@ -137,7 +141,8 @@ webster_wait <- function(lambda) {
   gr <- GREEN / CYCLE
   d1 <- CYCLE * (1 - gr)^2 / (2 * (1 - gr * x))          # uniform delay
   d2 <- I_ARR * x^2 / (2 * lambda * (1 - x))             # random / overflow delay
-  d1 + d2
+  d3 <- 0.65 * (CYCLE / lambda^2)^(1 / 3) * x^(2 + 5 * gr)   # Webster's empirical correction (subtracted)
+  d1 + d2 - d3
 }
 # Q(0) = mean queue left at the start of red. Estimated from lambda and the signal
 # timing only (overflow queue = lambda x Webster random delay); NOT read from the simulation.
@@ -216,6 +221,9 @@ signal$applicable <- is.finite(signal$analytic_mean_wait_s)
 ranking <- rbind(
   rank_models(plain, "non_signal", "all applicable scenarios"),
   rank_models(plain[plain$assumption_matches, ], "non_signal", "only where the model's service assumption matches"),
+  # like-for-like: every model scored on exactly the same scenarios
+  rank_models(plain[plain$lanes == 1, ], "non_signal", "same scenarios: 1 lane (all models)"),
+  rank_models(plain[plain$lanes == 2, ], "non_signal", "same scenarios: 2 lanes (multi-server models)"),
   rank_models(signal, "signal", "all scenarios"))
 rownames(ranking) <- NULL
 

@@ -1,6 +1,6 @@
 "setting","value"
 "seed",20261016
-"nonsignal_replications",100
+"nonsignal_replications",300
 "nonsignal_horizon_s",12000
 "nonsignal_warmup_s",1000
 "nonsignal_mu_per_server",0.75

@@ -3,55 +3,71 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Traffic Queue Model Comparison</title>
-<style>
-:root{--bg:#f4f6fa;--panel:#fff;--ink:#182230;--muted:#637083;--line:#e1e7ef;--accent:#2357c6}
-*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
-header{background:#172b4d;color:#fff;padding:28px max(20px,calc((100% - 1180px)/2))}
-header h1{margin:0 0 6px;font-size:26px}header p{margin:0;color:#d9e3f5}
-main{max-width:1180px;margin:24px auto;padding:0 18px}.notice{padding:12px 15px;background:#fff7df;border:1px solid #f0dfa3;border-radius:10px;margin-bottom:18px}
-.grid{display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px}.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:17px;box-shadow:0 2px 7px #15233b08}
-.card h2{font-size:17px;margin:0 0 10px}.metric{font-size:26px;font-weight:750}.muted{color:var(--muted);font-size:13px}
-section{margin-top:22px}.section-head{display:flex;gap:12px;align-items:baseline;justify-content:space-between;flex-wrap:wrap}
-select,input{padding:8px 10px;border:1px solid #cbd4e1;border-radius:7px;background:white;color:var(--ink)}
-.table-wrap{overflow:auto;background:white;border:1px solid var(--line);border-radius:10px}table{border-collapse:collapse;width:100%;font-size:13px;white-space:nowrap}th,td{padding:9px 11px;border-bottom:1px solid var(--line);text-align:left}th{background:#f8fafc;position:sticky;top:0}tr:last-child td{border-bottom:0}
-tr.best td{background:#e8f6ec;font-weight:600}tr.na td{color:#8a94a3}
-.pill{display:inline-block;background:#edf3ff;color:#244c9a;padding:3px 8px;border-radius:99px;font-size:12px}
-footer{color:var(--muted);font-size:12px;padding:30px 0}
-@media(max-width:800px){.grid{grid-template-columns:1fr}.metric{font-size:23px}}
-</style>
+<title>Traffic Queue Models</title>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-<header><h1>Traffic Queue Model Comparison</h1><p>Analytical predictions compared against repeated simulation results &nbsp;&middot;&nbsp; <a href="animation.html" style="color:#9fc0ff">Open the simulation animations</a></p></header>
+<header class="top">
+  <nav><a href="index.html" aria-current="page">Results</a><a href="animation.html">Live simulations &rarr;</a></nav>
+  <h1>Traffic queue model comparison</h1>
+  <p>Seven analytical waiting-time models checked against repeated simulation. Five queueing models are tested on a toll-booth style queue that is always open, and two signal-delay models are tested on a red/green approach.</p>
+</header>
 <main>
-<div class="notice"><strong>Read-only dashboard.</strong> Run <code>run_simulation.R</code> first. This page only reads <code>results/data.js</code> (or the CSV files if that is missing); it never runs the simulation. Green rows are the model closest to the simulation in that scenario.</div>
-<div class="grid">
-<div class="card"><h2>Non-signal study</h2><div class="metric" id="ns-count">—</div><div class="muted">model rows loaded</div></div>
-<div class="card"><h2>Signal study</h2><div class="metric" id="sig-count">—</div><div class="muted">model rows loaded</div></div>
-<div class="card"><h2>Best model (lowest mean % error)</h2><div class="metric" id="best-model">—</div><div class="muted" id="best-error">ranked separately per study</div></div>
-</div>
+<div class="notice" id="load-note"><strong>Read-only page.</strong> It shows <code>results/data.js</code>, which <code>run_simulation.R</code> writes. Re-run the R script to refresh the numbers.</div>
+
 <section>
-<div class="section-head"><h2>Live simulation animations</h2><a href="animation.html" target="_blank" rel="noopener">Open full page &#8599;</a></div>
-<p class="muted">One animated simulation per model, with the model's prediction drawn against the live running mean wait.</p>
-<iframe src="animation.html" title="Queue simulation animations" style="width:100%;height:760px;border:1px solid var(--line);border-radius:10px;background:#fff" loading="lazy"></iframe>
+  <div class="tiles">
+    <div class="card tile"><div class="label">Non-signal: best on shared scenarios</div><div class="value" id="t-ns">—</div><div class="sub" id="t-ns-sub"></div></div>
+    <div class="card tile"><div class="label">Signal: best model</div><div class="value" id="t-sig">—</div><div class="sub" id="t-sig-sub"></div></div>
+    <div class="card tile"><div class="label">Scenarios simulated</div><div class="value" id="t-scen">—</div><div class="sub" id="t-scen-sub"></div></div>
+    <div class="card tile"><div class="label">Simulation effort</div><div class="value" id="t-reps">—</div><div class="sub" id="t-reps-sub"></div></div>
+  </div>
 </section>
+
 <section>
-<div class="section-head"><h2>Non-signal traffic</h2><span class="pill">M/M/1 · M/M/c · M/D/c · M/G/1</span></div>
-<p class="muted">Each scenario is simulated once and every model predicts that same system. M/M/1 and M/G/1 are single-server models, so they show n/a on 2-lane scenarios. M/M/c assumes exponential service and M/D/c assumes deterministic service, so each is only expected to fit when the true service matches.</p>
-<div class="table-wrap"><table id="ns-table"><thead></thead><tbody><tr><td>Loading results…</td></tr></tbody></table></div>
+  <h2>Key findings</h2>
+  <ul class="findings" id="findings"><li>Loading…</li></ul>
 </section>
+
 <section>
-<div class="section-head"><h2>Signalised traffic</h2><span class="pill">Webster · Harahap Eq. 3.7</span></div>
-<p class="muted">Single lane, Poisson arrivals (I = 1), red 153 s + yellow 10 s with no discharge, green 90 s. Harahap uses a Q(0) estimated from the arrival rate and signal timing, not read from the simulation.</p>
-<div class="table-wrap"><table id="sig-table"><thead></thead><tbody><tr><td>Loading results…</td></tr></tbody></table></div>
+  <div class="section-head"><h2>Non-signal queue: M/M/1 · M/M/c · M/D/c · M/G/1 · M/G/c</h2></div>
+  <p class="lead">Each panel is one service type and lane count. The x axis is utilisation per server. The y axis is the model's error against the simulated mean wait. The black zero line is the simulation, so a model is right when its line sits on zero. M/M/1 and M/G/1 are single-server models, so they don't appear in the 2-lane panels.</p>
+  <div class="legend" id="ns-legend"></div>
+  <div class="facets" id="ns-facets"></div>
+
+  <div class="filters">
+    <label>Service<select id="f-svc"><option value="">All</option></select></label>
+    <label>Lanes<select id="f-lanes"><option value="">All</option><option>1</option><option>2</option></select></label>
+    <label>Utilisation<select id="f-rho"><option value="">All</option></select></label>
+    <label>Model<select id="f-model"><option value="">All</option></select></label>
+    <label>Show<select id="f-app"><option value="app">Applicable rows only</option><option value="">All rows</option></select></label>
+  </div>
+  <div class="table-wrap"><table id="ns-table"><thead></thead><tbody><tr><td>Loading results…</td></tr></tbody></table></div>
 </section>
+
 <section>
-<div class="section-head"><h2>Model rankings</h2><label class="muted">Study <select id="study-filter"><option value="all">Both studies</option><option value="non_signal">Non-signal</option><option value="signal">Signal</option></select></label></div>
-<div class="table-wrap"><table id="rank-table"><thead></thead><tbody><tr><td>Loading rankings…</td></tr></tbody></table></div>
+  <div class="section-head"><h2>Signalised approach: Webster · Harahap eq. 3.7</h2></div>
+  <p class="lead">One lane with Poisson arrivals. Red is 153 s, then green 90 s, then yellow 10 s. Cars leave only on green, one every 0.857 s, so capacity is 0.415 veh/s. The black line is the simulated mean wait, and its 95% CI band is narrower than the line. Webster is the full formula, including its empirical correction term. Both formulas over-predict, Harahap more so as the approach nears saturation.</p>
+  <div class="legend" id="sig-legend"></div>
+  <div class="card"><div class="chart" id="sig-chart"></div></div>
+  <div class="table-wrap" style="margin-top:12px"><table id="sig-table"><thead></thead><tbody><tr><td>Loading results…</td></tr></tbody></table></div>
 </section>
-<section><h2>Run settings</h2><div class="table-wrap"><table id="summary-table"><thead></thead><tbody><tr><td>Loading settings…</td></tr></tbody></table></div></section>
-<footer>Interpretation note: model accuracy depends on the scenario and assumptions. Review the CSVs and document model limitations before drawing conclusions.</footer>
+
+<section>
+  <div class="section-head"><h2>Model rankings</h2>
+    <label class="muted">Study <select id="study-filter"><option value="all">Both studies</option><option value="non_signal">Non-signal</option><option value="signal">Signal</option></select></label></div>
+  <p class="lead">Be careful with the "all applicable" rows: M/M/1 and M/G/1 are scored on 1-lane scenarios only, but the multi-server models are also scored on 2-lane ones, so those mean errors cover different scenario sets. The <b>same scenarios</b> rows score every model on exactly the same set, so use those for comparisons. When several models are the same formula in a scenario, they all count as closest there.</p>
+  <div class="table-wrap"><table id="rank-table"><thead></thead><tbody><tr><td>Loading rankings…</td></tr></tbody></table></div>
+</section>
+
+<section>
+  <h2>Run settings</h2>
+  <div class="table-wrap" style="margin-top:8px;max-width:520px"><table id="summary-table"><thead></thead><tbody><tr><td>Loading settings…</td></tr></tbody></table></div>
+</section>
+<footer>Model accuracy depends on the scenario and on each model's assumptions. Read <code>METHOD_NOTES.md</code> for the limits before you draw conclusions.</footer>
 </main>
+<div class="tip" id="tip"></div>
 <script src="../results/data.js"></script>
 <script src="dashboard.js"></script>
-</body></html>
+</body>
+</html>
