@@ -1,0 +1,258 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Queue simulation animations</title>
+<style>
+:root{--bg:#f4f6fa;--panel:#fff;--ink:#182230;--muted:#637083;--line:#e1e7ef;--acc:#2357c6;--red:#d6453d;--grn:#2e9d5b;--yel:#e5b52e;--pred:#c0392b}
+*{box-sizing:border-box}body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 system-ui,-apple-system,Segoe UI,sans-serif}
+header{background:#172b4d;color:#fff;padding:22px max(20px,calc((100% - 1180px)/2))}header h1{margin:0 0 4px;font-size:24px}header p{margin:0;color:#d9e3f5;font-size:14px}
+main{max-width:1180px;margin:20px auto;padding:0 18px 40px}
+.bar{display:flex;flex-wrap:wrap;gap:12px 18px;align-items:end;background:var(--panel);border:1px solid var(--line);border-radius:10px;padding:12px 14px;margin-bottom:14px}
+.bar label{display:flex;flex-direction:column;font-size:12px;color:var(--muted);gap:3px}
+select,button,input{font:inherit;padding:6px 9px;border:1px solid #cbd4e1;border-radius:7px;background:#fff;color:var(--ink)}button{cursor:pointer}
+h2{font-size:17px;margin:22px 0 8px}
+.grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:14px}
+.card{background:var(--panel);border:1px solid var(--line);border-radius:12px;padding:12px}
+.card h3{margin:0 0 2px;font-size:15px}.card .sub{color:var(--muted);font-size:12px;margin:0 0 6px}
+canvas{width:100%;height:auto;display:block;background:#f8fafc;border-radius:8px}
+.nums{display:grid;grid-template-columns:repeat(4,1fr);gap:6px;margin-top:8px}
+.nums div{border:1px solid var(--line);border-radius:6px;padding:4px 6px}.nums b{display:block;font-size:15px}.nums span{font-size:11px;color:var(--muted)}
+.pred b{color:var(--pred)}
+.note{color:var(--muted);font-size:13px}
+@media(max-width:820px){.grid{grid-template-columns:1fr}.nums{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header><a href="index.html" style="color:#9fc0ff;font-size:13px">&larr; Back to results dashboard</a><h1>Queue simulation animations</h1><p>One live simulation per model. The red dashed line is the model's prediction; the blue line is the live running mean wait.</p></header>
+<main>
+<div class="bar">
+  <label>Non-signal utilisation per server
+    <select id="rho"><option>0.3</option><option>0.5</option><option>0.7</option><option selected>0.85</option></select></label>
+  <label>Signal scenario (arrival rate)
+    <select id="sig"><option value="0.1">0.10 veh/s</option><option value="0.2">0.20 veh/s</option><option value="0.28">0.28 veh/s</option><option value="0.34">0.34 veh/s</option><option value="0.38" selected>0.38 veh/s</option></select></label>
+  <label>Non-signal speed: <b id="spdOut"></b>x
+    <input id="spd" type="range" min="0.5" max="60" step="0.5" value="3"></label>
+  <label>Signal speed: <b id="spdSigOut"></b>x
+    <input id="spdSig" type="range" min="1" max="120" step="1" value="12"></label>
+  <button id="pause">Pause</button>
+  <button id="skip">Skip ahead 3000 s</button>
+  <button id="reset">Reset all</button>
+</div>
+<p class="note">Chart key: blue = live running mean wait of the simulation; red dashed = the model's prediction; grey dotted = mean from the R run. X axis is simulated time, Y axis is mean wait in queue. Each panel is its own simulation. Non-signal panels use that model's own assumptions; the two signal panels simulate the same signal system independently, so you can compare how each formula tracks it. Early on the running mean is low because the queue starts empty; use "Skip ahead" to see it settle near the prediction. Predictions and the R run's simulated mean come from <code>../results/data.js</code>.</p>
+
+<h2>Non-signal queue</h2>
+<div class="grid" id="plainGrid"></div>
+
+<h2>Signalised approach</h2>
+<div class="grid" id="sigGrid"></div>
+</main>
+<script src="../results/data.js"></script>
+<script>
+"use strict";
+const MU = 0.75, SAT = 1.167, RED = 153, GREEN = 90, CYC = 253, H_SAT = 1 / SAT;
+const $ = id => document.getElementById(id);
+if (window.self !== window.top) document.querySelector("header").style.display = "none";   // hide the banner when embedded in the dashboard
+const R = window.RESULTS || { plain: [], signal: [] };
+const fmt = (v, d = 2) => (v === null || v === undefined || !isFinite(v)) ? "n/a" : Number(v).toFixed(d);
+const CSS = n => getComputedStyle(document.documentElement).getPropertyValue(n).trim();
+
+// ---------- random helpers ----------
+const rexp = rate => -Math.log(1 - Math.random()) / rate;
+function svcTime(kind) {                       // mean 1/MU in every case
+  if (kind === "exp") return rexp(MU);
+  if (kind === "det") return 1 / MU;
+  let s = 0; for (let i = 0; i < 4; i++) s += rexp(4 * MU); return s;   // gamma, shape 4 (cv2 = 0.25)
+}
+
+// ---------- shared chart (labelled axes + legend) ----------
+function niceStep(range, n) {
+  const raw = range / n, mag = Math.pow(10, Math.floor(Math.log10(raw))), f = raw / mag;
+  return (f < 1.5 ? 1 : f < 3 ? 2 : f < 7 ? 5 : 10) * mag;
+}
+function drawChart(cx, x, y, w, h, hist, lines, tmax) {
+  const L = 46, T = 20, B = 36, R = 22;                      // margins inside the box
+  const px = x + L, py = y + T, pw = w - L - R, ph = h - T - B;
+  const lv = lines.map(l => l.v).filter(v => isFinite(v));
+  const ymax = lv.length ? Math.max(...lv) * 1.8 : Math.max(1e-6, ...hist.map(p => p[1])) * 1.25;   // early spikes are clipped
+  const tm = Math.max(tmax, 1);
+  const X = t => px + pw * Math.min(1, t / tm), Y = v => py + ph - ph * Math.min(1, v / ymax);
+  cx.save(); cx.font = "10px system-ui"; cx.textBaseline = "middle";
+  // grid + y ticks
+  const ys = niceStep(ymax, 4), yd = ys < 1 ? 2 : ys < 10 ? 1 : 0;
+  cx.textAlign = "right"; cx.strokeStyle = "#e3e9ef"; cx.fillStyle = "#637083"; cx.lineWidth = 1;
+  for (let v = 0; v <= ymax + 1e-9; v += ys) { cx.beginPath(); cx.moveTo(px, Y(v)); cx.lineTo(px + pw, Y(v)); cx.stroke(); cx.fillText(v.toFixed(yd), px - 4, Y(v)); }
+  // x ticks
+  const xs = niceStep(tm, 5); cx.textAlign = "center"; cx.textBaseline = "top";
+  for (let t = 0; t <= tm + 1e-9; t += xs) { cx.beginPath(); cx.moveTo(X(t), py + ph); cx.lineTo(X(t), py + ph + 3); cx.strokeStyle = "#9aa7b4"; cx.stroke(); cx.fillText(Math.round(t), X(t), py + ph + 5); }
+  cx.strokeStyle = "#9aa7b4"; cx.strokeRect(px, py, pw, ph);
+  // axis titles
+  cx.fillStyle = "#182230"; cx.font = "11px system-ui"; cx.textAlign = "center"; cx.textBaseline = "alphabetic";
+  cx.fillText("simulated time (seconds)", px + pw / 2, y + h - 3);
+  cx.save(); cx.translate(x + 9, py + ph / 2); cx.rotate(-Math.PI / 2); cx.fillText("mean wait in queue (s)", 0, 0); cx.restore();
+  // reference lines (model prediction etc.)
+  lines.forEach(l => { if (!isFinite(l.v)) return; cx.strokeStyle = l.c; cx.setLineDash(l.dash || [6, 4]); cx.lineWidth = 1.6;
+    cx.beginPath(); cx.moveTo(px, Y(l.v)); cx.lineTo(px + pw, Y(l.v)); cx.stroke(); });
+  // live running mean
+  cx.setLineDash([]); cx.strokeStyle = "#2357c6"; cx.lineWidth = 1.8; cx.beginPath();
+  hist.forEach((p, i) => { const qx = X(p[0]), qy = Y(p[1]); i ? cx.lineTo(qx, qy) : cx.moveTo(qx, qy); }); cx.stroke();
+  // legend
+  cx.font = "10px system-ui"; cx.textAlign = "left"; cx.textBaseline = "middle"; let lx = px;
+  const items = [{ name: "live running mean", c: "#2357c6", dash: [] }].concat(lines.filter(l => isFinite(l.v)));
+  items.forEach(it => { cx.strokeStyle = it.c; cx.lineWidth = 2; cx.setLineDash(it.dash || [6, 4]); cx.beginPath(); cx.moveTo(lx, y + 8); cx.lineTo(lx + 18, y + 8); cx.stroke();
+    cx.setLineDash([]); cx.fillStyle = "#182230"; cx.fillText(it.name, lx + 22, y + 8); lx += 30 + cx.measureText(it.name).width; });
+  cx.restore();
+}
+
+// ---------- non-signal panel ----------
+const PLAIN = [
+  { model: "M/M/1", lanes: 1, svc: "exp",   stype: "exponential",    title: "M/M/1",  sub: "1 server, Poisson arrivals, exponential service" },
+  { model: "M/M/c", lanes: 2, svc: "exp",   stype: "exponential",    title: "M/M/c",  sub: "2 servers, Poisson arrivals, exponential service" },
+  { model: "M/D/c", lanes: 2, svc: "det",   stype: "deterministic",  title: "M/D/c",  sub: "2 servers, Poisson arrivals, deterministic service" },
+  { model: "M/G/1", lanes: 1, svc: "gamma", stype: "gamma_cv2_0.25", title: "M/G/1",  sub: "1 server, Poisson arrivals, gamma service (CV² 0.25)" }
+];
+class PlainPanel {
+  constructor(cfg, root) {
+    this.cfg = cfg; this.root = root;
+    root.innerHTML = `<h3>${cfg.title}</h3><p class="sub">${cfg.sub}</p><canvas width="520" height="300"></canvas>
+      <div class="nums"><div class="pred"><b class="p">-</b><span>model prediction (s)</span></div><div><b class="r">-</b><span>R run simulated mean (s)</span></div>
+      <div><b class="m">-</b><span>live mean wait (s)</span></div><div><b class="q">0</b><span>in queue / served</span></div></div>`;
+    this.cv = root.querySelector("canvas"); this.cx = this.cv.getContext("2d");
+    this.reset();
+  }
+  setRho(rho) {
+    this.rho = rho; const row = R.plain.find(r => r.model === this.cfg.model && r.lanes === this.cfg.lanes && r.service_type === this.cfg.stype && Math.abs(r.rho - rho) < 1e-9);
+    this.pred = row ? row.analytic_mean_wait_s : NaN; this.rsim = row ? row.simulated_mean_wait_s : NaN;
+    this.lam = rho * this.cfg.lanes * MU;
+    this.root.querySelector(".p").textContent = fmt(this.pred, 3); this.root.querySelector(".r").textContent = fmt(this.rsim, 3);
+    this.reset();
+  }
+  reset() {
+    this.t = 0; this.queue = []; this.servers = Array.from({ length: this.cfg.lanes }, () => ({ busy: false, end: 0, start: 0 }));
+    this.next = this.lam ? rexp(this.lam) : Infinity; this.n = 0; this.sum = 0; this.served = 0; this.hist = []; this.lastSample = 0;
+  }
+  dispatch(t) {
+    for (const s of this.servers) { if (s.busy || !this.queue.length) continue;
+      const a = this.queue.shift(), st = svcTime(this.cfg.svc); s.busy = true; s.start = t; s.end = t + st;
+      this.served++; if (this.served > 100) { this.n++; this.sum += t - a; } }
+  }
+  advance(dt) {
+    const target = this.t + dt;
+    for (;;) {
+      let td = Infinity, si = -1; this.servers.forEach((s, i) => { if (s.busy && s.end < td) { td = s.end; si = i; } });
+      const te = Math.min(this.next, td); if (te > target) break;
+      this.t = te;
+      if (this.next <= td) { this.queue.push(this.next); this.next += rexp(this.lam); this.dispatch(this.t); }
+      else { this.servers[si].busy = false; this.dispatch(this.t); }
+      if (this.t - this.lastSample >= Math.max(2, this.t / 150) && this.n) { this.hist.push([this.t, this.sum / this.n]); this.lastSample = this.t; }
+    }
+    this.t = target;
+  }
+  draw() {
+    const cx = this.cx, W = 520; cx.clearRect(0, 0, W, 300);
+    // queue lane
+    cx.fillStyle = "#e3e9ef"; cx.fillRect(10, 40, 330, 18 * 1 + 14);
+    const shown = Math.min(this.queue.length, 30);
+    for (let i = 0; i < shown; i++) { cx.fillStyle = "#4a6fa5"; cx.fillRect(330 - 10 - i * 10, 46, 8, 16); }
+    cx.fillStyle = "#637083"; cx.font = "11px system-ui"; cx.fillText("arrivals", 12, 34);
+    cx.fillText(this.queue.length > 30 ? "+" + (this.queue.length - 30) + " more" : "", 14, 82);
+    cx.fillText("queue: " + this.queue.length, 250, 34);
+    // servers
+    this.servers.forEach((s, i) => { const y0 = 20 + i * 52;
+      cx.fillStyle = "#eef2f6"; cx.fillRect(370, y0, 120, 40); cx.strokeStyle = "#cbd4e1"; cx.strokeRect(370, y0, 120, 40);
+      if (s.busy) { const prog = Math.min(1, (this.t - s.start) / (s.end - s.start)); cx.fillStyle = "#2e9d5b"; cx.fillRect(370, y0, 120 * prog, 40); }
+      cx.fillStyle = "#182230"; cx.fillText("server " + (i + 1) + (s.busy ? " busy" : " idle"), 376, y0 + 24);
+      if (s.busy) { cx.fillStyle = "#4a6fa5"; cx.fillRect(344, y0 + 12, 8, 16); } });
+    cx.fillStyle = "#637083"; cx.fillText("t = " + Math.floor(this.t) + " s", 440, 130);
+    drawChart(cx, 10, 135, 505, 160, this.hist, [{ v: this.pred, c: CSS("--pred"), name: "model prediction" }, { v: this.rsim, c: "#7f8c8d", dash: [2, 3], name: "R run mean" }], this.t);
+    const r = this.root; r.querySelector(".m").textContent = this.n ? fmt(this.sum / this.n, 3) : "-";
+    r.querySelector(".q").textContent = this.queue.length + " / " + this.served;
+  }
+}
+
+// ---------- signal panel (one per model, each with its own simulation) ----------
+const SIGNAL = [
+  { model: "Webster", title: "Webster", sub: "Uniform delay + random delay formula" },
+  { model: "Harahap Eq.3.7", title: "Harahap eq. 3.7", sub: "Harahap et al. (2019) waiting-time formula" }
+];
+class SignalPanel {
+  constructor(cfg, root) {
+    this.cfg = cfg; this.root = root;
+    root.innerHTML = `<h3>${cfg.title}</h3>
+      <p class="sub">${cfg.sub}. One lane, Poisson arrivals. Red 153 s, green 90 s, yellow 10 s; cars start only on green, one every 0.857 s.</p>
+      <canvas width="520" height="310"></canvas>
+      <div class="nums"><div class="pred"><b class="p">-</b><span>model prediction (s)</span></div><div><b class="r">-</b><span>R run simulated mean (s)</span></div>
+      <div><b class="m">-</b><span>live mean wait (s)</span></div><div><b class="q">0</b><span>in queue / served</span></div></div>`;
+    this.cv = root.querySelector("canvas"); this.cx = this.cv.getContext("2d");
+  }
+  setLambda(l) {
+    this.lam = l;
+    const row = R.signal.find(r => r.model === this.cfg.model && Math.abs(r.lambda - l) < 1e-9);
+    this.pred = row ? row.analytic_mean_wait_s : NaN; this.rsim = row ? row.simulated_mean_wait_s : NaN;
+    this.root.querySelector(".p").textContent = fmt(this.pred); this.root.querySelector(".r").textContent = fmt(this.rsim);
+    this.reset();
+  }
+  reset() { this.t = 0; this.queue = []; this.leaving = []; this.next = rexp(this.lam); this.lastStart = -Infinity;
+    this.n = 0; this.sum = 0; this.served = 0; this.hist = []; this.lastSample = 0; }
+  headStart() { if (!this.queue.length) return Infinity;
+    let t = Math.max(this.queue[0], this.lastStart + H_SAT), ph = t % CYC;
+    if (ph < RED) t = t - ph + RED; else if (ph >= RED + GREEN) t = t - ph + CYC + RED; return t; }
+  advance(dt) {
+    const target = this.t + dt;
+    for (;;) {
+      const ts = this.headStart(), te = Math.min(this.next, ts); if (te > target) break;
+      this.t = te;
+      if (this.next <= ts) { this.queue.push(this.next); this.next += rexp(this.lam); }
+      else { const a = this.queue.shift(); this.lastStart = ts; this.leaving.push(ts); this.served++;
+        if (ts > 40 * CYC) { this.n++; this.sum += ts - a; } }
+      if (this.t - this.lastSample >= Math.max(5, this.t / 150) && this.n) { this.hist.push([this.t, this.sum / this.n]); this.lastSample = this.t; }
+    }
+    this.t = target; this.leaving = this.leaving.filter(s => this.t - s < 6);
+  }
+  draw() {
+    const cx = this.cx; cx.clearRect(0, 0, 520, 310);
+    const ph = this.t % CYC, state = ph < RED ? "red" : ph < RED + GREEN ? "green" : "yellow", stop = 380, MAXQ = 34;
+    cx.fillStyle = "#e3e9ef"; cx.fillRect(10, 50, 500, 30);
+    cx.fillStyle = "#fff"; cx.fillRect(stop, 46, 3, 38);
+    const shown = Math.min(this.queue.length, MAXQ);
+    for (let i = 0; i < shown; i++) { cx.fillStyle = "#4a6fa5"; cx.fillRect(stop - 12 - i * 10, 57, 8, 16); }
+    this.leaving.forEach(s => { const x = stop + 8 + (this.t - s) * 22; if (x < 505) { cx.fillStyle = "#2e9d5b"; cx.fillRect(x, 57, 8, 16); } });
+    cx.fillStyle = "#637083"; cx.font = "11px system-ui";
+    cx.fillText("queue: " + this.queue.length + (this.queue.length > MAXQ ? " (" + (this.queue.length - MAXQ) + " off screen)" : ""), 14, 40);
+    [["red", "#d6453d"], ["yellow", "#e5b52e"], ["green", "#2e9d5b"]].forEach((l, i) => { cx.fillStyle = state === l[0] ? l[1] : "#c8d0d8"; cx.beginPath(); cx.arc(stop + 30 + i * 24, 22, 8, 0, 7); cx.fill(); });
+    const bx = 250, bw = 250, by = 96;
+    cx.fillStyle = "#d6453d"; cx.fillRect(bx, by, bw * RED / CYC, 7); cx.fillStyle = "#2e9d5b"; cx.fillRect(bx + bw * RED / CYC, by, bw * GREEN / CYC, 7);
+    cx.fillStyle = "#e5b52e"; cx.fillRect(bx + bw * (RED + GREEN) / CYC, by, bw * (CYC - RED - GREEN) / CYC, 7);
+    cx.fillStyle = "#182230"; cx.fillRect(bx + bw * ph / CYC - 1, by - 3, 3, 13);
+    cx.fillStyle = "#637083"; cx.fillText("cycle " + Math.floor(ph) + " / 253 s, " + state.toUpperCase(), bx, by + 24);
+    drawChart(cx, 10, 130, 505, 175, this.hist, [{ v: this.pred, c: CSS("--pred"), name: "model prediction" }, { v: this.rsim, c: "#7f8c8d", dash: [2, 3], name: "R run mean" }], this.t);
+    const r = this.root; r.querySelector(".m").textContent = this.n ? fmt(this.sum / this.n) : "-";
+    r.querySelector(".q").textContent = this.queue.length + " / " + this.served;
+  }
+}
+
+// ---------- wire up ----------
+const panels = PLAIN.map(c => { const d = document.createElement("div"); d.className = "card"; $("plainGrid").appendChild(d); return new PlainPanel(c, d); });
+const sigPanels = SIGNAL.map(c => { const d = document.createElement("div"); d.className = "card"; $("sigGrid").appendChild(d); return new SignalPanel(c, d); });
+const all = [...panels, ...sigPanels];
+const applyRho = () => panels.forEach(p => p.setRho(parseFloat($("rho").value)));
+const applySig = () => sigPanels.forEach(p => p.setLambda(parseFloat($("sig").value)));
+applyRho(); applySig();
+$("rho").onchange = applyRho; $("sig").onchange = applySig;
+const bindSpd = (id, out) => { $(id).oninput = () => $(out).textContent = $(id).value; $(out).textContent = $(id).value; };
+bindSpd("spd", "spdOut"); bindSpd("spdSig", "spdSigOut");   // value = simulated seconds per real second
+let paused = false;
+$("pause").onclick = () => { paused = !paused; $("pause").textContent = paused ? "Resume" : "Pause"; };
+$("reset").onclick = () => all.forEach(p => p.reset());
+$("skip").onclick = () => { all.forEach(p => { for (let i = 0; i < 30; i++) p.advance(100); }); };
+let last = performance.now();
+(function loop(now) {
+  const dt = Math.min((now - last) / 1000, 0.1); last = now;
+  if (!paused) all.forEach(p => p.advance(dt * parseFloat($(p instanceof SignalPanel ? "spdSig" : "spd").value)));
+  all.forEach(p => p.draw());
+  requestAnimationFrame(loop);
+})(last);
+</script>
+</body>
+</html>
